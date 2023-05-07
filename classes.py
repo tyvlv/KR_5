@@ -166,7 +166,7 @@ class DBManager:
 
     def get_vacancies_with_higher_salary(self) -> list:
         """ Получает список всех вакансий, у которых зарплата выше средней по всем вакансиям"""
-        result = self.execute_query("""SELECT vacancy_name, salary
+        result = self.execute_query("""SELECT *
                                        FROM vacancies
                                        WHERE salary > (SELECT AVG(salary) FROM vacancies)
                                        ORDER BY salary DESC, vacancy_name""")
@@ -174,7 +174,7 @@ class DBManager:
 
     def get_vacancies_with_keyword(self, word: str) -> list:
         """Получает список всех вакансий, в названии которых содержатся переданные в метод слова"""
-        result = self.execute_query(f"""SELECT vacancy_name
+        result = self.execute_query(f"""SELECT *
                                      FROM vacancies
                                      WHERE vacancy_name ILIKE '%{word}%'
                                      ORDER BY vacancy_name""")
