@@ -1,5 +1,3 @@
-import json
-
 import psycopg2
 import requests
 import time
@@ -74,15 +72,9 @@ class HH:
         return self.vacancy_list
 
 
-# hh = HH(3776)
-# print(json.dumps(hh.get_request(), indent=2, ensure_ascii=False))
-#
-# print(json.dumps(hh.get_vacancies(), indent=2, ensure_ascii=False))
-# print(len(hh.vacancy_list))
-
-
 class DBManager:
     """Класс для работы с базой данных, инициализируется названием базы данных и данными из конфигурационного файла"""
+
     def __init__(self, dbname: str, params: dict):
         self.dbname = dbname
         self.params = params
@@ -135,7 +127,7 @@ class DBManager:
         finally:
             conn.close()
 
-    def _execute_query(self, query: str) -> list:
+    def execute_query(self, query: str) -> list:
         """Возвращает результат запроса"""
         conn = psycopg2.connect(dbname=self.dbname, **self.params)
         try:
@@ -146,5 +138,44 @@ class DBManager:
 
         finally:
             conn.close()
+        return result
 
+    def get_companies_and_vacancies_count(self) -> list:
+        """Получает список всех компаний и количество вакансий у каждой компании"""
+        result = self.execute_query("""SELECT employer_name, COUNT(*) as quantity_vacancies
+                                       FROM vacancies
+                                       LEFT JOIN employers USING(employer_id)
+                                       GROUP BY employer_name
+                                       ORDER BY quantity_vacancies DESC, employer_name""")
+        return result
+
+    def get_all_vacancies(self) -> list:
+        """ Получает список всех вакансий с указанием названия компании,
+        названия вакансии и зарплаты и ссылки на вакансию"""
+        result = self.execute_query("""SELECT employers.employer_name, vacancy_name, salary, url
+                                        FROM vacancies
+                                        JOIN employers USING(employer_id)
+                                        ORDER BY salary DESC, vacancy_name""")
+        return result
+
+    def get_avg_salary(self) -> list:
+        """ Получает среднюю зарплату по вакансиям"""
+        result = self.execute_query("""SELECT ROUND(AVG(salary))
+                                       FROM vacancies""")
+        return result
+
+    def get_vacancies_with_higher_salary(self) -> list:
+        """ Получает список всех вакансий, у которых зарплата выше средней по всем вакансиям"""
+        result = self.execute_query("""SELECT vacancy_name, salary
+                                       FROM vacancies
+                                       WHERE salary > (SELECT AVG(salary) FROM vacancies)
+                                       ORDER BY salary DESC, vacancy_name""")
+        return result
+
+    def get_vacancies_with_keyword(self, word: str) -> list:
+        """Получает список всех вакансий, в названии которых содержатся переданные в метод слова"""
+        result = self.execute_query(f"""SELECT vacancy_name
+                                     FROM vacancies
+                                     WHERE vacancy_name ILIKE '%{word}%'
+                                     ORDER BY vacancy_name""")
         return result
