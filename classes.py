@@ -1,5 +1,6 @@
 import json
 
+import psycopg2
 import requests
 import time
 
@@ -33,7 +34,7 @@ class HH:
         """Выбирает нужную информацию о вакансии"""
 
         vacancy_id = int(data['id'])
-        name = data['name']
+        vacancy_name = data['name']
         employer_id = int(data['employer']['id'])
         city = data.get('area').get('name')
         url = data['alternate_url']
@@ -41,7 +42,7 @@ class HH:
             else 0 if data.get('salary', {}).get('from') is None \
             else data.get('salary', {}).get('from')
 
-        vacancy = (vacancy_id, name, employer_id, city, salary, url)
+        vacancy = (vacancy_id, vacancy_name, employer_id, city, salary, url)
 
         return vacancy
 
@@ -78,3 +79,72 @@ class HH:
 #
 # print(json.dumps(hh.get_vacancies(), indent=2, ensure_ascii=False))
 # print(len(hh.vacancy_list))
+
+
+class DBManager:
+    """Класс для работы с базой данных, инициализируется названием базы данных и данными из конфигурационного файла"""
+    def __init__(self, dbname: str, params: dict):
+        self.dbname = dbname
+        self.params = params
+
+    def create_database(self) -> None:
+        """Создает базу данных и таблицы"""
+        # Подключаемся к postgres, чтобы создать БД
+        conn = psycopg2.connect(dbname='postgres', **self.params)
+        conn.autocommit = True
+        cur = conn.cursor()
+
+        cur.execute(f"DROP DATABASE IF EXISTS {self.dbname}")
+        cur.execute(f"CREATE DATABASE {self.dbname}")
+
+        cur.close()
+        conn.close()
+
+        # Подключаемся к созданной БД и создаем таблицы
+        conn = psycopg2.connect(dbname=self.dbname, **self.params)
+        try:
+            with conn:
+                with conn.cursor() as cur:
+                    cur.execute("""CREATE TABLE IF NOT EXISTS employers (
+                                employer_id int PRIMARY KEY,
+                                employer_name varchar(255) NOT NULL)""")
+
+                    cur.execute("""CREATE TABLE IF NOT EXISTS vacancies (
+                                vacancy_id int PRIMARY KEY, 
+                                vacancy_name varchar(255) NOT NULL, 
+                                employer_id int REFERENCES employers(employer_id) NOT NULL, 
+                                city varchar(255), 
+                                salary int,
+                                url text)""")
+        finally:
+            conn.close()
+
+    def insert(self, table: str, data: list) -> None:
+        """Добавляет данные в таблицы базы данных"""
+        conn = psycopg2.connect(dbname=self.dbname, **self.params)
+        try:
+            with conn:
+                with conn.cursor() as cur:
+                    if table == 'employers':
+                        cur.executemany("""INSERT INTO employers(employer_id, employer_name)
+                                        VALUES(%s, %s)""", data)
+                    elif table == 'vacancies':
+                        cur.executemany("""INSERT INTO vacancies (vacancy_id, vacancy_name, employer_id, city, salary, url)
+                                        VALUES(%s, %s, %s, %s, %s, %s)
+                                        ON CONFLICT (vacancy_id) DO NOTHING""", data)
+        finally:
+            conn.close()
+
+    def _execute_query(self, query: str) -> list:
+        """Возвращает результат запроса"""
+        conn = psycopg2.connect(dbname=self.dbname, **self.params)
+        try:
+            with conn:
+                with conn.cursor() as cur:
+                    cur.execute(query)
+                    result = cur.fetchall()
+
+        finally:
+            conn.close()
+
+        return result
